@@ -1,0 +1,5 @@
+name: Carbon
+version: 0.0-ALPHA
+author: MasterDash5
+load: STARTUP
+main: dashnetwork.silicon.Silicon
