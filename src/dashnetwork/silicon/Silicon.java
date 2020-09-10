@@ -1,5 +1,6 @@
 package dashnetwork.silicon;
 
+import dashnetwork.silicon.listeners.JoinListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class Silicon extends JavaPlugin {
@@ -24,6 +25,8 @@ public class Silicon extends JavaPlugin {
     @Override
     public void onEnable() {
         instance = this;
+
+        // getServer().getPluginManager().registerEvents(new JoinListener(), this);
     }
 
     @Override

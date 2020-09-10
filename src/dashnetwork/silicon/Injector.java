@@ -5,9 +5,19 @@ import dashnetwork.silicon.blocks.BlockNetherWart;
 import dashnetwork.silicon.items.ItemBeetroot;
 import dashnetwork.silicon.items.ItemBeetrootSeeds;
 import dashnetwork.silicon.items.ItemElytra;
+import dashnetwork.silicon.utils.BlockVersion;
+import dashnetwork.silicon.utils.ChunkUtils;
 import dashnetwork.silicon.utils.MaterialList;
 import dashnetwork.silicon.utils.ReflectionUtils;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.ChannelPromise;
 import net.minecraft.server.v1_8_R3.*;
+import org.bukkit.craftbukkit.v1_8_R3.entity.CraftPlayer;
+import org.bukkit.entity.Player;
+import us.myles.ViaVersion.api.Via;
+import us.myles.ViaVersion.api.protocol.ProtocolVersion;
 
 import java.lang.reflect.Field;
 import java.util.Map;
@@ -69,6 +79,79 @@ public class Injector {
 
         fixBlocksRefs();
         fixItemsRefs();
+    }
+
+    public static void registerPackets(Player player) {
+        ChannelDuplexHandler handler = new ChannelDuplexHandler() {
+            private int version = Via.getAPI().getPlayerVersion(player);
+
+            @Override
+            public void channelRead(ChannelHandlerContext context, Object packet) throws Exception {
+                super.channelRead(context, packet);
+            }
+
+            @Override
+            public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
+                if (version < ProtocolVersion.v1_12_2.getId()) {
+                    if (packet instanceof PacketPlayOutBlockChange) {
+                        PacketPlayOutBlockChange blockChange = (PacketPlayOutBlockChange) packet;
+                        Block block = blockChange.block.getBlock();
+
+                        if (block instanceof BlockVersion) {
+                            BlockVersion blockVersion = (BlockVersion) block;
+
+                            if (version < blockVersion.getVersion().getId())
+                                blockChange.block = Block.getById(blockVersion.getRemapId()).getBlockData();
+                        }
+                    } /** else if (packet instanceof PacketPlayOutMultiBlockChange) {
+                     PacketPlayOutMultiBlockChange multiBlockChange = (PacketPlayOutMultiBlockChange) packet;
+                     Field field = multiBlockChange.getClass().getField("b");
+
+                     field.setAccessible(true);
+
+                     PacketPlayOutMultiBlockChange.MultiBlockChangeInfo[] infos = (PacketPlayOutMultiBlockChange.MultiBlockChangeInfo[]) field.get(PacketPlayOutMultiBlockChange.MultiBlockChangeInfo[].class);
+
+                     for (PacketPlayOutMultiBlockChange.MultiBlockChangeInfo info : infos) {
+                     Block block = info.c().getBlock();
+
+                     if (block instanceof BlockVersion) {
+                     BlockVersion blockVersion = (BlockVersion) block;
+
+                     if (version < blockVersion.getVersion().getId()) {
+                     PacketPlayOutMultiBlockChange.MultiBlockChangeInfo overwrite = multiBlockChange.MultiBlockChangeInfo(info.b(), Block.getById(blockVersion.getRemapId()));
+                     }
+                     }
+                     }
+                     }*/ else if (packet instanceof PacketPlayOutMapChunk) {
+                        PacketPlayOutMapChunk mapChunk = (PacketPlayOutMapChunk) packet;
+                        Field field = mapChunk.getClass().getDeclaredField("c");
+                        field.setAccessible(true);
+                        PacketPlayOutMapChunk.ChunkMap chunk = (PacketPlayOutMapChunk.ChunkMap) field.get(PacketPlayOutMapChunk.ChunkMap.class);
+
+                        int blocksNumber = 4096 * ChunkUtils.getSection(chunk.b);
+                        byte[] data = chunk.a;
+
+                        for (int i = 0; i < blocksNumber; i++) {
+                            Block block = Block.getById(data[i] & 0xFF);
+
+                            if (block instanceof BlockVersion) {
+                                BlockVersion blockVersion = (BlockVersion) block;
+
+                                if (version < blockVersion.getVersion().getId())
+                                    data[i] = (byte) blockVersion.getRemapId();
+                            }
+                        }
+
+                        field.set(mapChunk, chunk);
+                    }
+                }
+
+                super.write(context, packet, promise);
+            }
+        };
+
+        ChannelPipeline pipeline = ((CraftPlayer) player).getHandle().playerConnection.networkManager.channel.pipeline();
+        pipeline.addBefore("packet_handler", player.getName(), handler);
     }
 
     private static void registerBlock(int id, String name, Block block) {
